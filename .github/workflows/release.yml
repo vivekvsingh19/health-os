@@ -1,0 +1,101 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build backend and Tauri app
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target_triple: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target_triple: aarch64-apple-darwin
+          - os: windows-latest
+            target_triple: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu/Mac)
+        if: matrix.os != 'windows-latest'
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Install OS Dependencies (Ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev build-essential libssl-dev
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller and Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ai-engine/requirements-build.txt
+          pip install --no-deps mediapipe==0.10.11
+          pip install pyinstaller
+          df -h
+
+      - name: Build Python Sidecar Backend (All OS)
+        run: |
+          cd ai-engine
+          python build.py
+          mkdir -p ../src-tauri/binaries/
+          
+          # Handle Windows .exe extension mismatch
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp dist/healthos-backend.exe ../src-tauri/binaries/healthos-backend-${{ matrix.target_triple }}.exe
+          else
+            cp dist/healthos-backend ../src-tauri/binaries/healthos-backend-${{ matrix.target_triple }}
+          fi
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target_triple }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'HealthOS v__VERSION__'
+          releaseBody: 'See the attached assets for the latest release of HealthOS!'
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target_triple }}
