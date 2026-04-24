@@ -2,8 +2,6 @@ name: Build & Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -62,8 +60,8 @@ jobs:
       - name: Install PyInstaller and Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ai-engine/requirements-build.txt
-          pip install --no-deps mediapipe==0.10.11
+          pip install --no-cache-dir -r ai-engine/requirements-build.txt
+          pip install --no-cache-dir --no-deps mediapipe==0.10.11
           pip install pyinstaller
           df -h
 
@@ -93,9 +91,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__
-          releaseName: 'HealthOS v__VERSION__'
-          releaseBody: 'See the attached assets for the latest release of HealthOS!'
+          tagName: ${{ github.ref_name }}
+          releaseName: "HealthOS ${{ github.ref_name }}"
+          releaseBody: "See the attached assets for the latest release of HealthOS!"
           releaseDraft: true
           prerelease: false
+          includeRelease: ${{ matrix.os == 'ubuntu-latest' }}
           args: --target ${{ matrix.target_triple }}
