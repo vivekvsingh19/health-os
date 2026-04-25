@@ -1,172 +1,60 @@
-# 🧘 HealthOS Posture Monitor
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" alt="HealthOS Logo" width="128"/>
+</p>
 
-> **Privacy-first, AI-powered posture monitoring that runs silently on your desktop.**
+<h1 align="center">HealthOS Posture Monitor</h1>
 
-HealthOS uses on-device AI (MediaPipe) to analyze your posture in real-time through your webcam. No data ever leaves your computer. When your posture drops, the app pops up to coach you back into alignment — then disappears when you're sitting correctly.
+<p align="center">
+  <strong>A privacy-focused, AI-powered desktop posture monitor that runs 100% locally.</strong>
+</p>
 
----
-
-## ✨ Features
-
-| Feature | Description |
-|---|---|
-| 🤖 **Real-time AI Analysis** | MediaPipe pose detection running 100% offline on your CPU |
-| 📊 **Posture Score (0–100)** | Intuitive score showing exactly how well you're sitting |
-| 🟢🔴 **Visual Skeleton Overlay** | Green when good, red when slouching — drawn directly on your video feed |
-| 🧘 **Smart Coaching** | Context-aware instructions: "Straighten your back", "Lift your chest" |
-| 👻 **Auto Popup / Dismiss** | Bad posture for 1 min → window appears. Fix it → window auto-hides |
-| 🔔 **Desktop Notifications** | Non-intrusive alerts with cooldown protection |
-| 🖥️ **System Tray** | Minimize to tray, runs silently in the background |
-| 🚀 **Autostart** | Launches automatically when you boot your computer |
-| 🪑 **Sitting Timer** | Tracks how long you've been sitting, reminds you to take breaks at 60 min |
-| 🔒 **100% Private** | All processing happens on-device. Zero cloud. Zero tracking. |
+<p align="center">
+  <img alt="Platform: Windows" src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square&logo=windows">
+  <img alt="Platform: macOS" src="https://img.shields.io/badge/Platform-macOS-black?style=flat-square&logo=apple">
+  <img alt="Platform: Linux" src="https://img.shields.io/badge/Platform-Linux-orange?style=flat-square&logo=linux">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
+</p>
 
 ---
 
-## 🖼️ Screenshots
+## ⚡ Features
 
-The app overlays your live webcam feed with:
-- **Top Left**: Posture Score (0–100) in green/red
-- **Top Right**: Sitting duration timer
-- **Bottom Center**: Coaching instructions
-- **On Video**: Color-coded skeleton (green = good, red = bad)
-
----
-
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|---|---|
-| **AI Engine** | Python, Flask, OpenCV, MediaPipe |
-| **Desktop App** | Tauri 2 (Rust) |
-| **Frontend** | SvelteKit |
-| **Notifications** | Tauri Plugin Notification |
-| **System Tray** | Tauri Tray Icon API |
-| **Autostart** | Tauri Plugin Autostart |
+- **Offline Artificial Intelligence**: Uses MediaPipe and OpenCV directly on your machine. Absolutely zero data, images, or video leaves your computer.
+- **Micro-Popups**: Automatically pops up over your work when you have been slouching for more than 60 seconds.
+- **Smart Dismiss**: Automatically hides itself the moment you sit up straight!
+- **Break Reminders**: Sends a desktop notification every 60 minutes to remind you to stretch.
+- **Zero-Setup**: Built as a self-contained executable. No Python, Node, or GPU drivers required. Just download and run!
 
 ---
 
-## 📦 Prerequisites
+## 📥 Installation
 
-- **Python 3.8+** with `pip`
-- **Node.js 18+** with `npm`
-- **Rust** (install via [rustup.rs](https://rustup.rs))
-- **Webcam** (built-in or USB)
-- **Linux**: `sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
+HealthOS provides completely portable, self-contained releases for all major platforms.
 
----
+[**Download the Latest Release Here**](../../releases/latest)
 
-## 🚀 Quick Start
+### 🪟 Windows Setup & SmartScreen Warning
+1. Download either the `.msi` Installer or the standalone `.exe` (Portable).
+2. **Important**: Because this app is built by an indie developer (unsigned), Windows Defender SmartScreen will show a blue warning screen saying *"Windows protected your PC"*.
+3. This is completely normal for open-source apps without a $300 corporate certificate.
+4. Click **"More Info"** -> **"Run Anyway"**.
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/your-username/health-os.git
-cd health-os
-```
+### 🍏 macOS Setup
+1. Download the `.dmg` or `.app.tar.gz` (Portable).
+2. Drag the app into your `Applications` folder.
+3. Because the app is not downloaded from the official Mac App Store, your Mac will warn you when opening it.
+4. **Fix**: Right-Click (or Control+Click) on `HealthOS` in your Applications folder and click **Open**. Click "Open" again on the popup. You only need to do this once.
 
-### 2. Set up the Python backend (first time only)
-```bash
-cd ai-engine
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
-```
-
-### 3. Install frontend dependencies
-```bash
-npm install
-```
-
-### 4. Run in development mode
-```bash
-npm run tauri dev
-```
-
-The app will **automatically start the Python AI backend** — no need to run it separately!
-
-### 5. Build for production
-```bash
-npm run tauri build
-```
-
-This generates an installable `.deb` and `.AppImage` in `src-tauri/target/release/bundle/`.
+### 🐧 Linux Setup
+1. Download the `.AppImage` or `.deb` file.
+2. If using the AppImage, ensure you make it executable: `chmod +x HealthOS*.AppImage`.
 
 ---
 
-## 🏗️ Project Structure
+## 🏗️ Architecture
 
-```
-health-os/
-├── ai-engine/              # Python AI backend
-│   ├── app.py              # Flask server + MediaPipe pose detection
-│   ├── requirements.txt    # Python dependencies
-│   └── venv/               # Python virtual environment
-├── src/                    # SvelteKit frontend
-│   └── routes/
-│       └── +page.svelte    # Main UI (score, timer, coaching)
-├── src-tauri/              # Tauri desktop wrapper
-│   ├── src/lib.rs          # Rust core (tray, autostart, backend launcher)
-│   ├── tauri.conf.json     # App configuration
-│   ├── capabilities/       # Permission grants
-│   └── icons/              # App icons (all sizes)
-├── start-backend.sh        # Manual backend launcher (optional)
-├── package.json            # Node.js dependencies
-└── README.md               # You are here!
-```
-
----
-
-## ⚙️ Configuration
-
-### Adjusting Posture Sensitivity
-
-In `ai-engine/app.py`, change the threshold:
-
-```python
-BAD_ANGLE_DEG = 10.0   # Lower = stricter (requires near-perfect posture)
-```
-
-### Adjusting Auto-Popup Delay
-
-In `src/routes/+page.svelte`, change:
-
-```javascript
-const BAD_POPUP_DELAY_MS = 60_000;  // 1 minute (change to 30_000 for 30s)
-```
-
-### Adjusting Break Reminder
-
-```javascript
-const BREAK_INTERVAL_MS = 60 * 60 * 1000;  // 60 minutes
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## 🙏 Acknowledgments
-
-- [MediaPipe](https://mediapipe.dev/) — On-device ML framework by Google
-- [Tauri](https://tauri.app/) — Lightweight desktop app framework
-- [SvelteKit](https://kit.svelte.dev/) — Web framework
-- [OpenCV](https://opencv.org/) — Computer vision library
-
----
-
-**Built with ❤️ for better posture and healthier work habits.**
-# health-os
+HealthOS is built with a unique modern stack for high performance:
+- **Tauri (Rust)**: Handles the lightweight native desktop shell, system tray, notifications, and autostart features.
+- **SvelteKit**: Powers the blazing fast glassmorphic user interface.
+- **Python Backend**: Computes posture angles in real-time via `mediapipe`.
+- **PyInstaller Sidecar**: The entire Python environment is bundled into a single binary format and automatically driven by the Tauri Rust core via shell commands.

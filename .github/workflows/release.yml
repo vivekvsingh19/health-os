@@ -96,4 +96,5 @@ jobs:
           releaseBody: "See the attached assets for the latest release of HealthOS!"
           releaseDraft: true
           prerelease: false
+          uploadPlainBinary: true
           args: --target ${{ matrix.target_triple }}
