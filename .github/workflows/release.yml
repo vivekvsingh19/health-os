@@ -94,7 +94,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "HealthOS ${{ github.ref_name }}"
           releaseBody: "See the attached assets for the latest release of HealthOS!"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           uploadPlainBinary: true
           args: --target ${{ matrix.target_triple }}
