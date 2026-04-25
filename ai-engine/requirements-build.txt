@@ -7,5 +7,6 @@ numpy>=1.24.0
 protobuf>=4.25.0
 absl-py>=1.0.0
 attrs>=21.3.0
+matplotlib>=3.3.0
 # Install mediapipe without dependencies (avoids pulling in pytorch/CUDA/jax)
 # The --no-deps flag is passed in the workflow

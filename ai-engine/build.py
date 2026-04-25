@@ -30,7 +30,6 @@ if __name__ == '__main__':
         '--exclude-module=tensorflow',
         '--exclude-module=tensorboard',
         '--exclude-module=keras',
-        '--exclude-module=matplotlib',
         '--exclude-module=scipy',
         '--exclude-module=sklearn',
         '--exclude-module=pandas',
