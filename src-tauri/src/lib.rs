@@ -6,24 +6,47 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::menu::{Menu, MenuItem};
 use std::sync::Mutex;
 use std::process::{Child, Command};
+use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
 
-struct BackendProcess(Mutex<Option<Child>>);
+// We store both types of processes since dev mode uses std::process::Child (python script)
+// while production uses tauri_plugin_shell::process::CommandChild (sidecar binary).
+struct BackendProcess {
+    std_child: Mutex<Option<Child>>,
+    sidecar_child: Mutex<Option<CommandChild>>,
+}
 
 /// Spawn the Python AI backend — tries bundled sidecar first, falls back to venv script.
-fn spawn_backend(app_handle: &tauri::AppHandle) -> Option<Child> {
+fn spawn_backend(app_handle: &tauri::AppHandle) -> BackendProcess {
     // Kill any zombie backend from a previous run
     let _ = Command::new("bash")
         .args(["-c", "fuser -k 5000/tcp 2>/dev/null || true"])
         .output();
+    let _ = Command::new("cmd")
+        .args(["/C", "netstat -ano | findstr :5000"])
+        .output(); // basic windows check (would need taskkill for cleanup)
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    // Resolve paths relative to the executable location
-    let exe_dir = app_handle
-        .path()
-        .resource_dir()
-        .unwrap_or_default();
+    // 1. Try launching the bundled PyInstaller sidecar binary (production)
+    eprintln!("[HealthOS] Launching bundled PyInstaller sidecar backend...");
+    match app_handle.shell().sidecar("healthos-backend") {
+        Ok(sidecar_cmd) => {
+            match sidecar_cmd.spawn() {
+                Ok((_rx, child)) => {
+                    eprintln!("[HealthOS] Sidecar backend started successfully. PID: {}", child.pid());
+                    return BackendProcess {
+                        std_child: Mutex::new(None),
+                        sidecar_child: Mutex::new(Some(child)),
+                    };
+                }
+                Err(e) => eprintln!("[HealthOS] Failed to spawn sidecar: {}", e),
+            }
+        }
+        Err(e) => eprintln!("[HealthOS] Sidecar 'healthos-backend' not found: {}", e),
+    }
 
-    // Try the venv Python script (dev mode)
+    // 2. Fallback: Try the venv Python script (dev mode)
+    let exe_dir = app_handle.path().resource_dir().unwrap_or_default();
     let venv_python = exe_dir.join("../../../ai-engine/venv/bin/python");
     let app_py = exe_dir.join("../../../ai-engine/app.py");
 
@@ -32,23 +55,32 @@ fn spawn_backend(app_handle: &tauri::AppHandle) -> Option<Child> {
         match Command::new(&venv_python).arg(&app_py).spawn() {
             Ok(child) => {
                 eprintln!("[HealthOS] Backend started (PID {})", child.id());
-                return Some(child);
+                return BackendProcess {
+                    std_child: Mutex::new(Some(child)),
+                    sidecar_child: Mutex::new(None),
+                };
             }
             Err(e) => eprintln!("[HealthOS] Failed to start venv backend: {}", e),
         }
     }
 
-    // Fallback: try system python3
+    // 3. Last resort: system python3
     eprintln!("[HealthOS] Trying system python3 fallback...");
     let app_py_abs = exe_dir.join("../../../ai-engine/app.py");
     match Command::new("python3").arg(&app_py_abs).spawn() {
         Ok(child) => {
             eprintln!("[HealthOS] Backend started via system python (PID {})", child.id());
-            Some(child)
+            BackendProcess {
+                std_child: Mutex::new(Some(child)),
+                sidecar_child: Mutex::new(None),
+            }
         }
         Err(e) => {
             eprintln!("[HealthOS] All backend launch methods failed: {}", e);
-            None
+            BackendProcess {
+                std_child: Mutex::new(None),
+                sidecar_child: Mutex::new(None),
+            }
         }
     }
 }
@@ -65,8 +97,8 @@ pub fn run() {
         ))
         .setup(|app| {
             // ── Auto-launch Python backend ────────────────────────────────
-            let backend = spawn_backend(app.handle());
-            app.manage(BackendProcess(Mutex::new(backend)));
+            let backend_state = spawn_backend(app.handle());
+            app.manage(backend_state);
 
             // ── System Tray ───────────────────────────────────────────────
             let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
@@ -94,12 +126,17 @@ pub fn run() {
                         "quit" => {
                             // Kill backend before quitting
                             if let Some(state) = app.try_state::<BackendProcess>() {
-                                if let Ok(mut guard) = state.0.lock() {
+                                if let Ok(mut guard) = state.std_child.lock() {
                                     if let Some(mut child) = guard.take() {
                                         let _ = child.kill();
-                                        eprintln!("[HealthOS] Backend process killed.");
                                     }
                                 }
+                                if let Ok(mut guard) = state.sidecar_child.lock() {
+                                    if let Some(child) = guard.take() {
+                                        let _ = child.kill();
+                                    }
+                                }
+                                eprintln!("[HealthOS] Backend process killed.");
                             }
                             app.exit(0);
                         }
