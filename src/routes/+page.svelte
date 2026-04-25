@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
-  import { enable, isEnabled } from '@tauri-apps/plugin-autostart';
+  import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   // ── State ────────────────────────────────────────────────────────────────────
@@ -129,16 +129,29 @@
     }
   }
 
-  // ── Autostart setup ──────────────────────────────────────────────────────────
+  // ── Settings & Autostart ────────────────────────────────────────────────────
+  let autostartEnabled = false;
+  let showSettings = false;
+
   async function setupAutostart() {
     try {
-      const enabled = await isEnabled();
-      if (!enabled) {
+      autostartEnabled = await isEnabled();
+    } catch (e) {
+      console.warn('Autostart check failed:', e);
+    }
+  }
+
+  async function toggleAutostart() {
+    try {
+      if (autostartEnabled) {
+        await disable();
+        autostartEnabled = false;
+      } else {
         await enable();
-        console.log('Autostart enabled');
+        autostartEnabled = true;
       }
     } catch (e) {
-      console.warn('Autostart setup failed:', e);
+      console.warn('Failed to toggle autostart:', e);
     }
   }
 
@@ -235,6 +248,28 @@
   {#if instruction}
     <div class="bottom-centre-badge">
       <p class="instruction-text">{instruction}</p>
+    </div>
+  {/if}
+
+  <!-- Settings Button & Modal -->
+  <button class="settings-btn" on:click={() => showSettings = true} aria-label="Settings">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+  </button>
+
+  {#if showSettings}
+    <div class="settings-modal">
+      <div class="settings-content">
+        <h2>App Settings</h2>
+        
+        <div class="setting-item">
+          <span>Start automatically on PC boot</span>
+          <button class="toggle" class:on={autostartEnabled} on:click={toggleAutostart}>
+            <div class="knob"></div>
+          </button>
+        </div>
+
+        <button class="close-btn" on:click={() => showSettings = false}>Close</button>
+      </div>
     </div>
   {/if}
 
@@ -384,5 +419,119 @@
   @keyframes timer-pulse {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.6; }
+  }
+
+  /* ── Settings Modal ─────────────────────────────────────────── */
+  .settings-btn {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    z-index: 20;
+    background: rgba(20,20,25,0.6);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    color: rgba(255,255,255,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+  }
+  .settings-btn:hover {
+    background: rgba(40,40,45,0.8);
+    color: #fff;
+    transform: scale(1.05);
+  }
+
+  .settings-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(15px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fade-in 0.3s ease;
+  }
+
+  .settings-content {
+    background: #111115;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.8);
+    border-radius: 16px;
+    padding: 32px;
+    width: 90%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .settings-content h2 {
+    color: #fff;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 15px;
+  }
+
+  .toggle {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 20px;
+    width: 44px;
+    height: 24px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  .toggle.on {
+    background: #4ade80;
+  }
+  .toggle .knob {
+    background: #fff;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .toggle.on .knob {
+    transform: translateX(20px);
+  }
+
+  .close-btn {
+    margin-top: 16px;
+    background: #2a2a35;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.05);
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .close-btn:hover {
+    background: #363644;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

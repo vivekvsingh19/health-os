@@ -100,6 +100,13 @@ pub fn run() {
             let backend_state = spawn_backend(app.handle());
             app.manage(backend_state);
 
+            // ── Handle Autostart Minimized ────────────────────────────────
+            if std::env::args().any(|arg| arg == "--minimized") {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.hide();
+                }
+            }
+
             // ── System Tray ───────────────────────────────────────────────
             let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let hide_i = MenuItem::with_id(app, "hide", "Hide Window", true, None::<&str>)?;
