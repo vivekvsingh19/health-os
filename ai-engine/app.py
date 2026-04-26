@@ -12,10 +12,8 @@ import mediapipe as mp
 import mediapipe.python.solutions.pose as mp_pose
 import mediapipe.python.solutions.drawing_utils as mp_drawing
 import math
-import backports
+import backports.functools_lru_cache
 import jaraco.text
-import jaraco.context
-import jaraco.functools
 import threading
 import time
 import logging
