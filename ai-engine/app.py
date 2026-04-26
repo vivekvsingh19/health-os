@@ -1,8 +1,7 @@
 """
-HealthOS Posture Monitor — AI Engine
-Flask + MediaPipe pose detection backend.
-Runs a single continuous camera loop in a daemon thread.
-All processing is 100% offline / on-device.
+HealthOS Posture Monitor — AI Engine (Tasks API Edition)
+Flask + MediaPipe Tasks pose detection backend.
+Works with modern MediaPipe (0.10+).
 """
 
 import matplotlib
@@ -10,35 +9,24 @@ matplotlib.use('Agg')
 
 import sys
 import os
-
-# Handle frozen environment (PyInstaller)
-if getattr(sys, 'frozen', False):
-    # Add the bundle directory to sys.path to find data-bundled packages
-    bundle_dir = sys._MEIPASS
-    if bundle_dir not in sys.path:
-        sys.path.insert(0, bundle_dir)
-
-from flask import Flask, jsonify
-from flask_cors import CORS
 import cv2
 import mediapipe as mp
+import numpy as np
 import math
 import threading
 import time
 import logging
+from flask import Flask, jsonify
+from flask_cors import CORS
 
-# Robust MediaPipe imports for PyInstaller
-try:
-    from mediapipe.python.solutions import pose as mp_pose
-    from mediapipe.python.solutions import drawing_utils as mp_drawing
-except ImportError:
-    try:
-        mp_pose = mp.solutions.pose
-        mp_drawing = mp.solutions.drawing_utils
-    except AttributeError:
-        # Final fallback for some frozen environments
-        import mediapipe.python.solutions.pose as mp_pose
-        import mediapipe.python.solutions.drawing_utils as mp_drawing
+# Handle frozen environment (PyInstaller)
+if getattr(sys, 'frozen', False):
+    bundle_dir = sys._MEIPASS
+    if bundle_dir not in sys.path:
+        sys.path.insert(0, bundle_dir)
+    MODEL_PATH = os.path.join(bundle_dir, "pose_landmarker.task")
+else:
+    MODEL_PATH = "pose_landmarker.task"
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -48,165 +36,162 @@ logging.basicConfig(
 )
 log = logging.getLogger("posture-engine")
 
+# ── MediaPipe Tasks Setup ──────────────────────────────────────────────────────
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+options = vision.PoseLandmarkerOptions(
+    base_options=base_options,
+    running_mode=vision.RunningMode.VIDEO,
+    output_segmentation_masks=False
+)
+detector = vision.PoseLandmarker.create_from_options(options)
+
 # ── Flask app ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)  # allow Tauri webview (different origin) to reach the API
+CORS(app)
 
-# ── MediaPipe Pose (lightweight, CPU-only) ─────────────────────────────────────
-pose = mp_pose.Pose(
-    static_image_mode=False,
-    model_complexity=0,          # 0 = lite model → lowest CPU usage
-    smooth_landmarks=True,
-    enable_segmentation=False,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
-)
-
-# ── Shared state (written by camera thread, read by Flask) ─────────────────────
+# ── Shared state ───────────────────────────────────────────────────────────────
 _lock = threading.Lock()
 _latest: dict = {"status": "starting", "angle": None}
 _latest_frame = b''
 
-
-def _set_result(status: str, angle=None) -> None:
+def _set_result(status: str, angle: float = None):
     with _lock:
         _latest["status"] = status
-        _latest["angle"] = round(angle, 2) if angle is not None else None
+        _latest["angle"] = round(angle, 1) if angle is not None else None
 
-
-def _get_result() -> dict:
+def _get_result():
     with _lock:
-        return dict(_latest)
+        return _latest.copy()
 
+# ── Posture Logic ─────────────────────────────────────────────────────────────
+BAD_ANGLE_DEG = 165
+LOOP_DELAY_SEC = 0.033 # ~30 FPS
 
-# ── Angle calculation ──────────────────────────────────────────────────────────
-def calculate_angle(ear: tuple, shoulder: tuple, hip: tuple) -> float:
-    """
-    Returns the deviation (in degrees) from a perfectly straight 180° posture
-    formed by the ear → shoulder → hip vectors.
-    0° = perfectly straight. Higher = more slouch.
-    """
-    angle = math.degrees(
-        math.atan2(hip[1] - shoulder[1], hip[0] - shoulder[0])
-        - math.atan2(ear[1] - shoulder[1], ear[0] - shoulder[0])
-    )
-    angle = abs(angle)
-    if angle > 180:
+# Landmark indices for pose
+NOSE = 0
+L_SHOULDER = 11
+R_SHOULDER = 12
+L_HIP = 23
+R_HIP = 24
+L_EAR = 7
+R_EAR = 8
+
+def calculate_angle(a, b, c):
+    a = np.array(a)
+    b = np.array(b)
+    c = np.array(c)
+    
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians*180.0/np.pi)
+    if angle > 180.0:
         angle = 360 - angle
+    return angle
 
-    # 180 is upright. Deviation from 180 is our slouch angle.
-    return abs(180 - angle)
+def draw_landmarks(frame, landmarks):
+    """Simple manual drawing of pose landmarks since drawing_utils is legacy."""
+    h, w, _ = frame.shape
+    # Draw connections (simplified set)
+    connections = [
+        (11, 12), (11, 23), (12, 24), (23, 24), # Torso
+        (11, 7), (12, 8), # Shoulder to Ear
+    ]
+    
+    # Extract points
+    pts = {}
+    for i, lm in enumerate(landmarks):
+        pts[i] = (int(lm.x * w), int(lm.y * h))
+        
+    color = (0, 255, 0) # Default green
+    for start_idx, end_idx in connections:
+        if start_idx in pts and end_idx in pts:
+            cv2.line(frame, pts[start_idx], pts[end_idx], color, 2)
+    
+    for idx in [7, 8, 11, 12, 23, 24]: # Draw key points
+        if idx in pts:
+            cv2.circle(frame, pts[idx], 4, (255, 255, 0), -1)
 
+def camera_loop():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        log.error("Could not open camera.")
+        _set_result("camera_error")
+        return
 
-# ── Camera loop (runs in a daemon thread) ─────────────────────────────────────
-CAMERA_INDEX   = 0
-FRAME_WIDTH    = 640
-FRAME_HEIGHT   = 480
-LOOP_DELAY_SEC = 0.10   # ~10 FPS → smooth enough video, reasonable CPU
-BAD_ANGLE_DEG  = 10.0   # threshold: angle > this → "bad" posture (stricter, requires 90+ score)
-
-
-def camera_loop() -> None:
-    log.info("Camera loop starting …")
-
-    # Keep retrying if the camera is not available at startup
-    cap = None
-    while cap is None or not cap.isOpened():
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        if not cap.isOpened():
-            log.warning("Camera not available — retrying in 3 s …")
+    log.info("Camera opened.")
+    while cap.isOpened():
+        success, frame = cap.read()
+        if not success:
             _set_result("camera_error")
-            time.sleep(3)
-            continue
+            break
 
-    # Set resolution
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  FRAME_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-    log.info("Camera opened at %dx%d", FRAME_WIDTH, FRAME_HEIGHT)
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            log.warning("Failed to read frame — camera may have disconnected")
-            _set_result("camera_error")
-            cap.release()
-            cap = cv2.VideoCapture(CAMERA_INDEX)
-            time.sleep(1)
-            continue
-
-        # MediaPipe expects RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # Prevent MediaPipe from writing back into the frame buffer
-        frame_rgb.flags.writeable = False
-        results = pose.process(frame_rgb)
+        # Convert for MediaPipe
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        
+        # Detector processing
+        timestamp_ms = int(time.time() * 1000)
+        results = detector.detect_for_video(mp_image, timestamp_ms)
 
         if not results.pose_landmarks:
             _set_result("no_person")
         else:
-            lm = results.pose_landmarks.landmark
-
-            ear      = lm[mp_pose.PoseLandmark.LEFT_EAR.value]
-            shoulder = lm[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
-            hip      = lm[mp_pose.PoseLandmark.LEFT_HIP.value]
-
-            # Confidence check: MediaPipe hallucinates points off-screen.
-            # We strictly discard if visibility is low, OR if the predicted Y coordinates
-            # fall near or below the bottom of the camera view (> 0.85).
-            if ear.visibility < 0.65 or shoulder.visibility < 0.65 or shoulder.y > 0.85 or ear.y > 0.85:
-                _set_result("no_person")
-            else:
-                # Use normalised (x, y) coordinates — sufficient for angle calc
-                ear_pt      = (ear.x,      ear.y)
-                shoulder_pt = (shoulder.x, shoulder.y)
-                hip_pt      = (hip.x,      hip.y)
-
-                angle = calculate_angle(ear_pt, shoulder_pt, hip_pt)
-                status = "bad" if angle > BAD_ANGLE_DEG else "good"
-                _set_result(status, angle)
-
-                # Draw skeleton with colour based on status
-                color = (0, 255, 0) if status == "good" else (0, 0, 255) # BGR
-                landmark_spec = mp_drawing.DrawingSpec(color=color, thickness=2, circle_radius=4)
-                connection_spec = mp_drawing.DrawingSpec(color=color, thickness=2)
-
-                mp_drawing.draw_landmarks(
-                    frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                    landmark_drawing_spec=landmark_spec,
-                    connection_drawing_spec=connection_spec
+            # We use the first person detected
+            landmarks = results.pose_landmarks[0]
+            
+            # Posture logic (Side view preferred, but we'll try to find best side)
+            # Find Ear, Shoulder, and Hip on the same side
+            # Check visibility
+            l_vis = landmarks[L_EAR].visibility > 0.5 and landmarks[L_SHOULDER].visibility > 0.5
+            r_vis = landmarks[R_EAR].visibility > 0.5 and landmarks[R_SHOULDER].visibility > 0.5
+            
+            target_pts = None
+            if l_vis:
+                target_pts = (
+                    (landmarks[L_EAR].x, landmarks[L_EAR].y),
+                    (landmarks[L_SHOULDER].x, landmarks[L_SHOULDER].y),
+                    (landmarks[L_HIP].x, landmarks[L_HIP].y)
+                )
+            elif r_vis:
+                target_pts = (
+                    (landmarks[R_EAR].x, landmarks[R_EAR].y),
+                    (landmarks[R_SHOULDER].x, landmarks[R_SHOULDER].y),
+                    (landmarks[R_HIP].x, landmarks[R_HIP].y)
                 )
 
-        # encode frame for streaming
-        ret_encoding, buffer = cv2.imencode('.jpg', frame)
-        if ret_encoding:
+            if target_pts:
+                angle = calculate_angle(*target_pts)
+                status = "bad" if angle > BAD_ANGLE_DEG else "good"
+                _set_result(status, angle)
+                
+                # Draw
+                draw_landmarks(frame, landmarks)
+            else:
+                _set_result("no_person")
+
+        # Encode for streaming
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if ret:
             global _latest_frame
             with _lock:
                 _latest_frame = buffer.tobytes()
 
         time.sleep(LOOP_DELAY_SEC)
 
-
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 def index():
-    return {"service": "HealthOS Posture Engine", "version": "1.0.0"}
-
+    return {"service": "HealthOS Posture Engine", "version": "2.0.0"}
 
 @app.get("/posture")
 def posture():
-    """
-    Returns:
-        {
-            "status": "good" | "bad" | "no_person" | "camera_error" | "starting",
-            "angle":  <float | null>
-        }
-    """
     return jsonify(_get_result())
-
 
 @app.get("/health")
 def health():
     return {"ok": True}
-
 
 def generate_frames():
     while True:
@@ -222,14 +207,8 @@ def video_feed():
     from flask import Response
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Start camera thread BEFORE accepting requests
-    t = threading.Thread(target=camera_loop, daemon=True, name="camera-loop")
+    t = threading.Thread(target=camera_loop, daemon=True)
     t.start()
-
     log.info("Starting Flask server on http://127.0.0.1:5000")
-    # use_reloader=False is critical — reloader spawns a second process that
-    # would open the camera twice and deadlock.
     app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
