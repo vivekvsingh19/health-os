@@ -13,6 +13,8 @@ import math
 import threading
 import time
 import logging
+import matplotlib
+matplotlib.use('Agg')
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
