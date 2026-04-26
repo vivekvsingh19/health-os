@@ -9,16 +9,10 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import cv2
 import mediapipe as mp
-import mediapipe.python.solutions.pose as mp_pose
-import mediapipe.python.solutions.drawing_utils as mp_drawing
 import math
-import backports.functools_lru_cache
-import jaraco.text
 import threading
 import time
 import logging
-import matplotlib
-matplotlib.use('Agg')
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -33,6 +27,7 @@ app = Flask(__name__)
 CORS(app)  # allow Tauri webview (different origin) to reach the API
 
 # ── MediaPipe Pose (lightweight, CPU-only) ─────────────────────────────────────
+mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False,
     model_complexity=0,          # 0 = lite model → lowest CPU usage
@@ -146,10 +141,10 @@ def camera_loop() -> None:
 
                 # Draw skeleton with colour based on status
                 color = (0, 255, 0) if status == "good" else (0, 0, 255) # BGR
-                landmark_spec = mp_drawing.DrawingSpec(color=color, thickness=2, circle_radius=4)
-                connection_spec = mp_drawing.DrawingSpec(color=color, thickness=2)
+                landmark_spec = mp.solutions.drawing_utils.DrawingSpec(color=color, thickness=2, circle_radius=4)
+                connection_spec = mp.solutions.drawing_utils.DrawingSpec(color=color, thickness=2)
 
-                mp_drawing.draw_landmarks(
+                mp.solutions.drawing_utils.draw_landmarks(
                     frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
                     landmark_drawing_spec=landmark_spec,
                     connection_drawing_spec=connection_spec
