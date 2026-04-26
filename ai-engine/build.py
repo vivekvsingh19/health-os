@@ -1,5 +1,12 @@
 import PyInstaller.__main__
+import os
 import sys
+import mediapipe
+import matplotlib
+
+# Find base paths
+mp_base = os.path.dirname(mediapipe.__file__)
+mpl_base = os.path.dirname(matplotlib.__file__)
 
 if __name__ == '__main__':
     PyInstaller.__main__.run([
@@ -7,36 +14,21 @@ if __name__ == '__main__':
         '--name=healthos-backend',
         '--onefile',
         '--noconsole',
-        '--hidden-import=cv2',
-        '--hidden-import=flask',
-        '--hidden-import=flask_cors',
-        '--hidden-import=backports',
-        '--hidden-import=backports.functools_lru_cache',
-        '--hidden-import=jaraco.text',
-        '--hidden-import=jaraco.context',
-        '--hidden-import=jaraco.functools',
-        '--hidden-import=pkg_resources',
-        '--hidden-import=matplotlib',
-        '--hidden-import=matplotlib.pyplot',
-        '--collect-all=mediapipe',
-        '--collect-all=matplotlib',
-        '--collect-all=jaraco',
-        '--collect-all=backports',
-        # Exclude huge unused ML frameworks that mediapipe drags in
-        '--exclude-module=torch',
-        '--exclude-module=torchvision',
-        '--exclude-module=torchaudio',
-        '--exclude-module=triton',
-        '--exclude-module=jax',
-        '--exclude-module=jaxlib',
-        '--exclude-module=tensorflow',
-        '--exclude-module=tensorboard',
-        '--exclude-module=keras',
-        '--exclude-module=scipy',
-        '--exclude-module=sklearn',
-        '--exclude-module=pandas',
-        '--exclude-module=IPython',
-        '--exclude-module=jupyter',
-        '--log-level=INFO',
+        # Force inclusion of both package directories to be safe
+        '--add-data', f'{mp_base}:mediapipe',
+        '--add-data', f'{mpl_base}:matplotlib',
+        # Standard collection
+        '--collect-all', 'mediapipe',
+        '--collect-all', 'matplotlib',
+        # Hidden imports for critical submodules
+        '--hidden-import', 'mediapipe.python.solutions.pose',
+        '--hidden-import', 'mediapipe.python.solutions.drawing_utils',
+        '--hidden-import', 'matplotlib.pyplot',
+        # Exclusions to keep size reasonable
+        '--exclude-module', 'torch',
+        '--exclude-module', 'torchvision',
+        '--exclude-module', 'jax',
+        '--exclude-module', 'tensorflow',
+        '--log-level', 'INFO',
     ])
     print("Build complete!")

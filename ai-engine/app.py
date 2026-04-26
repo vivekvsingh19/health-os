@@ -5,6 +5,19 @@ Runs a single continuous camera loop in a daemon thread.
 All processing is 100% offline / on-device.
 """
 
+import matplotlib
+matplotlib.use('Agg')
+
+import sys
+import os
+
+# Handle frozen environment (PyInstaller)
+if getattr(sys, 'frozen', False):
+    # Add the bundle directory to sys.path to find data-bundled packages
+    bundle_dir = sys._MEIPASS
+    if bundle_dir not in sys.path:
+        sys.path.insert(0, bundle_dir)
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 import cv2
@@ -13,8 +26,19 @@ import math
 import threading
 import time
 import logging
-import matplotlib
-matplotlib.use('Agg')
+
+# Robust MediaPipe imports for PyInstaller
+try:
+    from mediapipe.python.solutions import pose as mp_pose
+    from mediapipe.python.solutions import drawing_utils as mp_drawing
+except ImportError:
+    try:
+        mp_pose = mp.solutions.pose
+        mp_drawing = mp.solutions.drawing_utils
+    except AttributeError:
+        # Final fallback for some frozen environments
+        import mediapipe.python.solutions.pose as mp_pose
+        import mediapipe.python.solutions.drawing_utils as mp_drawing
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -29,7 +53,6 @@ app = Flask(__name__)
 CORS(app)  # allow Tauri webview (different origin) to reach the API
 
 # ── MediaPipe Pose (lightweight, CPU-only) ─────────────────────────────────────
-mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False,
     model_complexity=0,          # 0 = lite model → lowest CPU usage
@@ -38,7 +61,6 @@ pose = mp_pose.Pose(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5,
 )
-mp_drawing = mp.solutions.drawing_utils
 
 # ── Shared state (written by camera thread, read by Flask) ─────────────────────
 _lock = threading.Lock()
