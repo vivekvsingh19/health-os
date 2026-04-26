@@ -13,6 +13,8 @@ import math
 import threading
 import time
 import logging
+import matplotlib
+matplotlib.use('Agg')
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -36,6 +38,7 @@ pose = mp_pose.Pose(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5,
 )
+mp_drawing = mp.solutions.drawing_utils
 
 # ── Shared state (written by camera thread, read by Flask) ─────────────────────
 _lock = threading.Lock()

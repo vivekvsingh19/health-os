@@ -17,7 +17,11 @@ if __name__ == '__main__':
         '--hidden-import=jaraco.context',
         '--hidden-import=jaraco.functools',
         '--hidden-import=pkg_resources',
+        '--hidden-import=matplotlib',
+        '--hidden-import=matplotlib.pyplot',
+        '--hidden-import=mediapipe.python.solutions',
         '--collect-all=mediapipe',
+        '--collect-all=matplotlib',
         '--collect-all=jaraco',
         '--collect-all=backports',
         # Exclude huge unused ML frameworks that mediapipe drags in
