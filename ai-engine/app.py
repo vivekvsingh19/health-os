@@ -9,8 +9,6 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import cv2
 import mediapipe as mp
-import mediapipe.python.solutions.pose as mp_pose
-import mediapipe.python.solutions.drawing_utils as mp_drawing
 import math
 import threading
 import time
@@ -31,6 +29,7 @@ app = Flask(__name__)
 CORS(app)  # allow Tauri webview (different origin) to reach the API
 
 # ── MediaPipe Pose (lightweight, CPU-only) ─────────────────────────────────────
+mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False,
     model_complexity=0,          # 0 = lite model → lowest CPU usage
@@ -39,6 +38,7 @@ pose = mp_pose.Pose(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5,
 )
+mp_drawing = mp.solutions.drawing_utils
 
 # ── Shared state (written by camera thread, read by Flask) ─────────────────────
 _lock = threading.Lock()
