@@ -67,7 +67,7 @@ def _get_result():
         return _latest.copy()
 
 # ── Posture Logic ─────────────────────────────────────────────────────────────
-BAD_ANGLE_DEG = 165
+BAD_ANGLE_THRESHOLD = 20  # degrees of deviation from straight
 LOOP_DELAY_SEC = 0.033 # ~30 FPS
 
 # Landmark indices for pose
@@ -84,11 +84,19 @@ def calculate_angle(a, b, c):
     b = np.array(b)
     c = np.array(c)
     
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi)
-    if angle > 180.0:
-        angle = 360 - angle
-    return angle
+    # Calculate vectors
+    ba = a - b
+    bc = c - b
+    
+    # Calculate cosine of angle
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
+    angle_deg = np.degrees(angle)
+    
+    # We want deviation from 180 degrees
+    # If angle_deg is 180, deviation is 0. If angle_deg is 150, deviation is 30.
+    deviation = abs(180 - angle_deg)
+    return deviation
 
 def draw_landmarks(frame, landmarks):
     """Simple manual drawing of pose landmarks since drawing_utils is legacy."""
@@ -96,7 +104,7 @@ def draw_landmarks(frame, landmarks):
     # Draw connections (simplified set)
     connections = [
         (11, 12), (11, 23), (12, 24), (23, 24), # Torso
-        (11, 7), (12, 8), # Shoulder to Ear
+        (7, 11), (8, 12), # Ear to Shoulder
     ]
     
     # Extract points
@@ -141,9 +149,8 @@ def camera_loop():
             # We use the first person detected
             landmarks = results.pose_landmarks[0]
             
-            # Posture logic (Side view preferred, but we'll try to find best side)
+            # Posture logic (Side view preferred)
             # Find Ear, Shoulder, and Hip on the same side
-            # Check visibility
             l_vis = landmarks[L_EAR].visibility > 0.5 and landmarks[L_SHOULDER].visibility > 0.5
             r_vis = landmarks[R_EAR].visibility > 0.5 and landmarks[R_SHOULDER].visibility > 0.5
             
@@ -162,9 +169,9 @@ def camera_loop():
                 )
 
             if target_pts:
-                angle = calculate_angle(*target_pts)
-                status = "bad" if angle > BAD_ANGLE_DEG else "good"
-                _set_result(status, angle)
+                deviation = calculate_angle(*target_pts)
+                status = "bad" if deviation > BAD_ANGLE_THRESHOLD else "good"
+                _set_result(status, deviation)
                 
                 # Draw
                 draw_landmarks(frame, landmarks)
