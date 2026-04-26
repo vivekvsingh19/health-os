@@ -15,6 +15,8 @@ if __name__ == '__main__':
         '--collect-all=jaraco.text',
         '--collect-all=jaraco.context',
         '--collect-all=jaraco.functools',
+        '--add-data=backports/__init__.py:backports',
+        '--add-data=jaraco/__init__.py:jaraco',
         '--hidden-import=mediapipe.python.solutions',
         '--hidden-import=matplotlib.pyplot',
         '--hidden-import=backports.functools_lru_cache',
