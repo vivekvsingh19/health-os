@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A privacy-focused, AI-powered desktop posture monitor that runs 100% locally.</strong>
-</p>
+</
 
 <p align="center">
   <img alt="Platform: Windows" src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square&logo=windows">
