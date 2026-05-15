@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src-tauri/icons/128x128.png" alt="HealthOS Logo" width="128"/>
+  <img src="src-tauri/icons/128x128.png" al="HealthOS Logo" width="128"/>
 </p>
 
 <h1 align="center">HealthOS Posture Monitor</h1>
